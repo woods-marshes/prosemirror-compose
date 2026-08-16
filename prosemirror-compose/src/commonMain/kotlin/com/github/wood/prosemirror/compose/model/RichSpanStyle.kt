@@ -117,44 +117,96 @@ public interface RichSpanStyle {
                 topPadding: Float,
                 startPadding: Float,
             ) {
-                val path = Path()
-                val backgroundColor = richTextConfig.codeSpanBackgroundColor
-                val strokeColor = richTextConfig.codeSpanStrokeColor
-                val cornerRadius = CornerRadius(cornerRadius.toPx())
+                drawCodeFill(layoutResult, textRange, richTextConfig, topPadding, startPadding)
+                drawCodeStroke(layoutResult, textRange, richTextConfig, topPadding, startPadding)
+            }
+
+            /** 只画 code 背景（供编辑器在 drawContent 之前调用，保证盖在容器背景之上、文字之下）。 */
+            internal fun DrawScope.drawCodeFill(
+                layoutResult: TextLayoutResult,
+                textRange: TextRange,
+                richTextConfig: ProseMirrorConfig,
+                topPadding: Float,
+                startPadding: Float,
+            ) {
                 val boxes = layoutResult.getBoundingBoxes(
                     startOffset = textRange.start,
                     endOffset = textRange.end,
                     flattenForFullParagraphs = true
                 )
-
+                val roundedCornerRadius = CornerRadius(cornerRadius.toPx())
                 boxes.fastForEachIndexed { index, box ->
-                    path.addRoundRect(
-                        RoundRect(
-                            rect = box.copy(
-                                left = box.left - padding.horizontal.toPx() + startPadding,
-                                right = box.right + padding.horizontal.toPx() + startPadding,
-                                top = box.top - padding.vertical.toPx() + topPadding,
-                                bottom = box.bottom + padding.vertical.toPx() + topPadding,
-                            ),
-                            topLeft = if (index == 0) cornerRadius else CornerRadius.Zero,
-                            bottomLeft = if (index == 0) cornerRadius else CornerRadius.Zero,
-                            topRight = if (index == boxes.lastIndex) cornerRadius else CornerRadius.Zero,
-                            bottomRight = if (index == boxes.lastIndex) cornerRadius else CornerRadius.Zero
-                        )
-                    )
                     drawPath(
-                        path = path,
-                        color = backgroundColor,
+                        path = buildCodePath(
+                            box = box,
+                            index = index,
+                            lastIndex = boxes.lastIndex,
+                            roundedCornerRadius = roundedCornerRadius,
+                            topPadding = topPadding,
+                            startPadding = startPadding,
+                        ),
+                        color = richTextConfig.codeSpanBackgroundColor,
                         style = Fill
                     )
+                }
+            }
+
+            /** 只画 code 描边（供编辑器在 drawContent 之后调用，避免被容器/选区背景盖住）。 */
+            internal fun DrawScope.drawCodeStroke(
+                layoutResult: TextLayoutResult,
+                textRange: TextRange,
+                richTextConfig: ProseMirrorConfig,
+                topPadding: Float,
+                startPadding: Float,
+            ) {
+                val boxes = layoutResult.getBoundingBoxes(
+                    startOffset = textRange.start,
+                    endOffset = textRange.end,
+                    flattenForFullParagraphs = true
+                )
+                val roundedCornerRadius = CornerRadius(cornerRadius.toPx())
+                boxes.fastForEachIndexed { index, box ->
                     drawPath(
-                        path = path,
-                        color = strokeColor,
+                        path = buildCodePath(
+                            box = box,
+                            index = index,
+                            lastIndex = boxes.lastIndex,
+                            roundedCornerRadius = roundedCornerRadius,
+                            topPadding = topPadding,
+                            startPadding = startPadding,
+                        ),
+                        color = richTextConfig.codeSpanStrokeColor,
                         style = Stroke(
                             width = strokeWidth.toPx(),
                         )
                     )
                 }
+            }
+
+            private fun DrawScope.buildCodePath(
+                box: androidx.compose.ui.geometry.Rect,
+                index: Int,
+                lastIndex: Int,
+                roundedCornerRadius: CornerRadius,
+                topPadding: Float,
+                startPadding: Float,
+            ): Path {
+                val path = Path()
+                path.addRoundRect(
+                    RoundRect(
+                        rect = box.copy(
+                            left = box.left - padding.horizontal.toPx() + startPadding,
+                            right = box.right + padding.horizontal.toPx() + startPadding,
+                            top = box.top - padding.vertical.toPx() + topPadding,
+                            bottom = box.bottom + padding.vertical.toPx() + topPadding,
+                        ),
+                        topLeft = if (index == 0) roundedCornerRadius else CornerRadius.Zero,
+                        bottomLeft = if (index == 0) roundedCornerRadius else CornerRadius.Zero,
+                        topRight = if (index == lastIndex) roundedCornerRadius else CornerRadius.Zero,
+                        bottomRight = if (index == lastIndex) roundedCornerRadius else CornerRadius.Zero,
+                    )
+                )
+                return path
             }
 
             override val acceptNewTextInTheEdges: Boolean =

@@ -298,6 +298,7 @@ public fun BasicProseMirrorEditor(
                     state = state,
                     topPadding = with(density) { contentPadding.calculateTopPadding().toPx() },
                     startPadding = with(density) { contentPadding.calculateStartPadding(layoutDirection).toPx() },
+                    overContent = true,
                 )
                 .then(
                     if (!readOnly)
