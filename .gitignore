@@ -18,3 +18,7 @@ captures
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
 repomix-output.xml
+# Local AI-assistant context & tooling (not part of the published repo)
+.devin/
+.repomixignore
+reference/
