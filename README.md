@@ -107,16 +107,16 @@ Gradle module metadata is published for the `kotlinMultiplatform` artifact, so A
 
 ## Publishing
 
-Publishing is driven by GitHub Actions:
+Publishing is driven by GitHub Actions through the [Maven Central Portal](https://central.sonatype.com/):
 
-- Push to `main` → publishes `0.1.0-SNAPSHOT` to the Sonatype snapshots repository.
-- Push a `v*` tag (for example `v0.1.0`) → publishes `0.1.0` to the Sonatype staging repository, then closes and releases it to Maven Central.
+- Push to `main` → publishes `0.1.0-SNAPSHOT` to the Central Portal snapshot repository.
+- Push a `v*` tag (for example `v0.1.0`) → uploads `0.1.0` to the Central Portal and automatically publishes it after validation.
 
 Required GitHub Actions secrets:
 
 | Secret | Purpose |
 | --- | --- |
-| `OSSRH_USERNAME` / `OSSRH_PASSWORD` | Sonatype OSSRH account (you must first claim the `io.github.woods-marshes` namespace) |
+| `MAVEN_CENTRAL_USERNAME` / `MAVEN_CENTRAL_PASSWORD` | Central Portal user token (generate it on central.sonatype.com after registering and claiming the `io.github.woods-marshes` namespace) |
 | `SIGNING_KEY_ID` | Last 8 characters of the GPG public key ID |
 | `SIGNING_KEY` | ASCII-armored GPG private key |
 | `SIGNING_PASSWORD` | GPG private key passphrase |

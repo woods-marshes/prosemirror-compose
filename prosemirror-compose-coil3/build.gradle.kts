@@ -5,12 +5,17 @@ plugins {
     alias(libs.plugins.androidMultiplatformLibrary)
     alias(libs.plugins.composeMultiplatform)
     alias(libs.plugins.composeCompiler)
+    alias(libs.plugins.vanniktechMavenPublish)
 }
 
-extra["POM_DESCRIPTION"] =
-    "Coil3 image loader integration for prosemirror-compose."
-
-apply(from = rootProject.file("gradle/maven-publish.gradle.kts"))
+mavenPublishing {
+    // GROUP / VERSION_NAME / POM_* 从 gradle.properties 读取；
+    // 模块名默认就是 artifactId，这里只补模块专属的 name/description。
+    pom {
+        name.set("prosemirror-compose-coil3")
+        description.set("Coil3 image loader integration for prosemirror-compose.")
+    }
+}
 
 kotlin {
     listOf(
