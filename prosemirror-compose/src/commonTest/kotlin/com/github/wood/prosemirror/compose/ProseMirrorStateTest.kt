@@ -2,18 +2,25 @@ package com.github.wood.prosemirror.compose
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.InternalComposeUiApi
+import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import com.github.wood.prosemirror.compose.annotation.ExperimentalProseMirrorApi
 import com.github.wood.prosemirror.compose.model.HeadingStyle
 import com.github.wood.prosemirror.compose.model.ProseMirrorState
+import com.github.wood.prosemirror.compose.model.RichSpanStyle
 import com.github.wood.prosemirror.compose.model.addLink
 import com.github.wood.prosemirror.compose.model.addLinkToSelection
+import com.github.wood.prosemirror.compose.model.addParagraphStyle
+import com.github.wood.prosemirror.compose.model.addSpanStyle
 import com.github.wood.prosemirror.compose.model.addTextAtIndex
 import com.github.wood.prosemirror.compose.model.currentHeadingStyle
+import com.github.wood.prosemirror.compose.model.currentSpanStyle
 import com.github.wood.prosemirror.compose.model.handleEnter
 import com.github.wood.prosemirror.compose.model.isLink
 import com.github.wood.prosemirror.compose.model.isUnorderedList
@@ -193,6 +200,162 @@ class ProseMirrorStateTest {
             para.child(i).marks.any { it.type.name == "strong" }
         }
         assertTrue(hasBold)
+    }
+
+    @Test
+    fun boldTogglesBackOffSelection() {
+        val state = ProseMirrorState()
+        state.type("bold")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 4)))
+        state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "strong" })
+        state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "strong" })
+    }
+
+    @Test
+    fun formattingIsUndoable() {
+        val state = ProseMirrorState()
+        state.type("bold")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 4)))
+        state.toggleSpanStyle(SpanStyle(fontWeight = FontWeight.Bold))
+        assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "strong" })
+
+        state.undo()
+        assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "strong" })
+
+        state.redo()
+        assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "strong" })
+    }
+
+    @Test
+    fun underlineTogglesBackOffSelection() {
+        val state = ProseMirrorState()
+        state.type("text")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 4)))
+        state.toggleSpanStyle(SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline))
+        assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "underline" })
+        state.toggleSpanStyle(SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline))
+        assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "underline" })
+    }
+
+    @Test
+    fun fontSizeAndColorCoexist() {
+        val state = ProseMirrorState()
+        state.type("abc")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 3)))
+        state.toggleSpanStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Red))
+        state.toggleSpanStyle(SpanStyle(fontSize = 28.sp))
+        val textStyle = state.doc.child(0).child(0).marks.firstOrNull { it.type.name == "textStyle" }
+        assertNotNull(textStyle)
+        assertTrue(textStyle.attrs["fontSize"] != null)
+        assertTrue(textStyle.attrs["color"] != null)
+    }
+
+    @Test
+    fun textStyleFieldsToggleIndependently() {
+        val state = ProseMirrorState()
+        state.type("abc")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 3)))
+        state.toggleSpanStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Red))
+        state.toggleSpanStyle(SpanStyle(fontSize = 28.sp))
+
+        // 移除 color 后 fontSize 必须保留（字段级 toggle，而不是整类 mark 互斥）。
+        state.toggleSpanStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Red))
+        val textStyle = state.doc.child(0).child(0).marks.firstOrNull { it.type.name == "textStyle" }
+        assertNotNull(textStyle)
+        assertTrue(textStyle.attrs["fontSize"] != null)
+        assertTrue(textStyle.attrs["color"] == null)
+
+        // 再移除 fontSize 后 textStyle mark 整体消失。
+        state.toggleSpanStyle(SpanStyle(fontSize = 28.sp))
+        assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "textStyle" })
+    }
+
+    @Test
+    fun addFontSizeKeepsPerSegmentColors() {
+        val state = ProseMirrorState()
+        state.type("ab")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 1)))
+        state.addSpanStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Red))
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(1, 2)))
+        state.addSpanStyle(SpanStyle(color = androidx.compose.ui.graphics.Color.Blue))
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 2)))
+        state.addSpanStyle(SpanStyle(fontSize = 28.sp))
+
+        val para = state.doc.child(0)
+        val colors = (0 until para.childCount).mapNotNull { i ->
+            para.child(i).marks.firstOrNull { it.type.name == "textStyle" }?.attrs?.get("color")
+        }
+        assertEquals(listOf("#FF0000", "#0000FF"), colors)
+        (0 until para.childCount).forEach { i ->
+            val mark = para.child(i).marks.firstOrNull { it.type.name == "textStyle" }
+            assertNotNull(mark)
+            assertTrue(mark.attrs["fontSize"] != null)
+        }
+
+        // color 不同时，共有的 fontSize 仍应能被识别并 toggle 掉（参考版逐字段共有样式）。
+        assertEquals(28.sp, state.currentSpanStyle.fontSize)
+        state.toggleSpanStyle(SpanStyle(fontSize = 28.sp))
+        val updatedPara = state.doc.child(0)
+        (0 until updatedPara.childCount).forEach { i ->
+            val mark = updatedPara.child(i).marks.firstOrNull { it.type.name == "textStyle" }
+            assertNotNull(mark)
+            assertTrue(mark.attrs["fontSize"] == null)
+            assertTrue(mark.attrs["color"] != null)
+        }
+    }
+
+    @Test
+    fun cjkCompositionLikeEditsRoundTrip() {
+        val state = ProseMirrorState()
+        // IME 典型序列：输入拼音字符 → 替换为候选词（仍在 composition 中）→ 提交。
+        state.type("n")
+        state.onTextFieldValueChange(
+            TextFieldValue("你", TextRange(1), composition = TextRange(0, 1)),
+        )
+        state.onTextFieldValueChange(TextFieldValue("你", TextRange(1)))
+        assertEquals("你", state.toText())
+        assertEquals(1, state.textFieldValue.selection.min)
+    }
+
+    @Test
+    fun codeTogglesBackOffSelection() {
+        val state = ProseMirrorState()
+        state.type("abc")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 3)))
+        state.toggleCodeSpan()
+        assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "code" })
+        state.toggleCodeSpan()
+        assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "code" })
+    }
+
+    @Test
+    fun codeOnMultiParagraphSelectionKeepsStructure() {
+        val state = ProseMirrorState()
+        state.setText("alpha beta\ngamma delta")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 10)))
+        state.toggleCodeSpan()
+        assertEquals(2, state.doc.childCount)
+        assertEquals("alpha beta\ngamma delta", state.toText())
+        val codeRanges = state.styledRichSpanList.filter { it.first is com.github.wood.prosemirror.compose.model.RichSpanStyle.Code }
+        assertEquals(listOf(TextRange(0, 10)), codeRanges.map { it.second })
+        state.toggleCodeSpan()
+        assertTrue(state.styledRichSpanList.none { it.first is com.github.wood.prosemirror.compose.model.RichSpanStyle.Code })
+    }
+
+    @Test
+    fun paragraphTextAlignAppliesAndRenders() {
+        val state = ProseMirrorState()
+        state.type("abc")
+        state.placeCaret(3)
+        state.addParagraphStyle(ParagraphStyle(textAlign = TextAlign.Center))
+        assertEquals("center", state.doc.child(0).attrs["textAlign"])
+        assertTrue(state.annotatedString.paragraphStyles.any { it.item.textAlign == TextAlign.Center })
+
+        state.addParagraphStyle(ParagraphStyle(textAlign = TextAlign.Left))
+        assertEquals("left", state.doc.child(0).attrs["textAlign"])
+        assertTrue(state.annotatedString.paragraphStyles.any { it.item.textAlign == TextAlign.Left })
     }
 
     @Test

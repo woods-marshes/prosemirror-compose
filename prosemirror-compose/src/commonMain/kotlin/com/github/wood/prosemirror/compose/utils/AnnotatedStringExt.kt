@@ -5,6 +5,7 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.ParagraphStyle
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextIndent
 import androidx.compose.ui.unit.sp
@@ -79,6 +80,7 @@ internal fun AnnotatedString.Builder.appendProseMirrorDoc(
         val isBlock = node.isBlock
         val isDoc = node.type == state.schema.topNodeType
         var pushedIndentStyle = false
+        var pushedTextAlignStyle = false
 
         if (isBlock && !isDoc) {
             // 块起始开销
@@ -96,6 +98,21 @@ internal fun AnnotatedString.Builder.appendProseMirrorDoc(
             // 列表项：输出 marker + 缩进
             if (node.type.name == "list_item" && listStack.isNotEmpty() && listMarker != null) {
                 pushedIndentStyle = appendListItemMarker(state, node, listStack.last(), listMarker, pmCursor, mapBuilder)
+            }
+
+            // textAlign 段落属性 → ParagraphStyle（无该属性时保持默认对齐）
+            val textAlign = (node.attrs["textAlign"] as? String)?.let { attr ->
+                when (attr) {
+                    "left", "start" -> TextAlign.Left
+                    "center" -> TextAlign.Center
+                    "right", "end" -> TextAlign.Right
+                    "justify" -> TextAlign.Justify
+                    else -> null
+                }
+            }
+            if (textAlign != null) {
+                pushStyle(ParagraphStyle(textAlign = textAlign))
+                pushedTextAlignStyle = true
             }
         }
 
@@ -185,6 +202,7 @@ internal fun AnnotatedString.Builder.appendProseMirrorDoc(
         }
 
         if (isBlock && !isDoc) {
+            if (pushedTextAlignStyle) pop()
             if (pushedIndentStyle) pop()
             // 块结束开销
             pmCursor += 1

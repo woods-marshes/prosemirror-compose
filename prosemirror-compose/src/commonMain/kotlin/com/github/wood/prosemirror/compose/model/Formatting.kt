@@ -13,6 +13,9 @@ import com.atlassian.prosemirror.model.Mark
 import com.atlassian.prosemirror.model.MarkType
 import com.atlassian.prosemirror.model.util.resolveSafe
 import com.atlassian.prosemirror.state.TextSelection
+import com.atlassian.prosemirror.state.Transaction
+import com.atlassian.prosemirror.transform.AddMarkStep
+import com.atlassian.prosemirror.transform.RemoveMarkStep
 import com.atlassian.prosemirror.transform.setBlockType
 import com.atlassian.prosemirror.transform.setNodeMarkup
 import com.github.wood.prosemirror.compose.annotation.ExperimentalProseMirrorApi
@@ -45,10 +48,10 @@ public fun ProseMirrorState.setConfig(
     updateAnnotatedString()
 }
 
-/** 选区处合并后的 [SpanStyle]（折叠选区取光标 marks）。 */
+/** 选区处合并后的 [SpanStyle]（折叠选区取光标 marks；非折叠取字段级共有样式）。 */
 @OptIn(ExperimentalProseMirrorApi::class)
 public val ProseMirrorState.currentSpanStyle: SpanStyle
-    get() = activeMarkSet().toSpanStyle(config)
+    get() = selectionSpanStyle()
 
 /** 选区处最相关的 [RichSpanStyle]（link > code > Default）。 */
 @OptIn(ExperimentalProseMirrorApi::class)
@@ -113,25 +116,14 @@ public fun ProseMirrorState.isRichSpan(kClass: KClass<out RichSpanStyle>): Boole
 public inline fun <reified A1 : RichSpanStyle> ProseMirrorState.isRichSpan(): Boolean =
     isRichSpan(A1::class)
 
-/** 指定扁平选区覆盖范围内的共有 [SpanStyle]。 */
+/** 指定扁平选区覆盖范围内的共有 [SpanStyle]（非折叠取字段级共有样式）。 */
 @OptIn(ExperimentalProseMirrorApi::class)
 public fun ProseMirrorState.getSpanStyle(textRange: TextRange): SpanStyle {
     if (textRange.collapsed) {
         return marksBeforeFlatPosition(textRange.min - 1).toSpanStyle(config)
     }
     val (from, to) = pmRangeOf(textRange)
-    val common = mutableListOf<Mark>()
-    doc.nodesBetween(from, to, f = { node, _, _, _ ->
-        if (node.isText) {
-            if (common.isEmpty()) {
-                node.marks.forEach { if (common.none { c -> c == it }) common += it }
-            } else {
-                common.retainAll { c -> node.marks.any { it == c } }
-            }
-        }
-        true
-    })
-    return common.toSpanStyle(config)
+    return spanStyleOverRange(from, to)
 }
 
 /** 指定扁平选区范围内的 [RichSpanStyle]（link > code > Default）。 */
@@ -168,23 +160,23 @@ public fun ProseMirrorState.getRichSpanStyle(textRange: TextRange): RichSpanStyl
 
 /**
  * 切换 [spanStyle]。折叠选区切换"将要输入的文字"的样式；非折叠选区切换选区样式。
- * 可表示字段映射见 [com.github.wood.prosemirror.compose.model.toMarksToAdd]。
+ * 与参考版一致：显式指定的字段在选区中全部命中时移除，否则添加；
+ * textStyle 的 color/fontSize 以字段粒度合并/移除，不会互相覆盖。
  */
 @OptIn(ExperimentalProseMirrorApi::class)
 public fun ProseMirrorState.toggleSpanStyle(spanStyle: SpanStyle) {
-    val toAdd = spanStyle.toMarksToAdd(schema)
-    if (toAdd.isEmpty()) return
-    val hasAny = activeMarkSet().any { current -> toAdd.any { it == current } }
-    if (hasAny) removeSpanStyle(spanStyle) else addSpanStyle(spanStyle)
+    if (!spanStyle.hasRepresentableSpanChange(schema)) return
+    if (isSpanStyleActive(spanStyle)) removeSpanStyle(spanStyle) else addSpanStyle(spanStyle)
 }
 
 /** 添加 [spanStyle] 到选区（折叠选区暂存到 storedMarks，后续输入继承）。 */
 @OptIn(ExperimentalProseMirrorApi::class)
 public fun ProseMirrorState.addSpanStyle(spanStyle: SpanStyle) {
     applyMarkChange(
-        toAdd = spanStyle.toMarksToAdd(schema),
-        toRemove = emptyList(),
+        toAdd = spanStyle.toSimpleMarksToAdd(schema),
+        toRemove = spanStyle.toSimpleMarkTypesToRemoveForAdd(schema),
         range = textFieldValue.selection,
+        textStyleAttrsToAdd = spanStyle.textStyleAttrsToAdd(),
     )
 }
 
@@ -193,9 +185,10 @@ public fun ProseMirrorState.addSpanStyle(spanStyle: SpanStyle) {
 public fun ProseMirrorState.addSpanStyle(spanStyle: SpanStyle, textRange: TextRange) {
     if (textRange.collapsed) return
     applyMarkChange(
-        toAdd = spanStyle.toMarksToAdd(schema),
-        toRemove = emptyList(),
+        toAdd = spanStyle.toSimpleMarksToAdd(schema),
+        toRemove = spanStyle.toSimpleMarkTypesToRemoveForAdd(schema),
         range = textRange,
+        textStyleAttrsToAdd = spanStyle.textStyleAttrsToAdd(),
     )
 }
 
@@ -204,8 +197,9 @@ public fun ProseMirrorState.addSpanStyle(spanStyle: SpanStyle, textRange: TextRa
 public fun ProseMirrorState.removeSpanStyle(spanStyle: SpanStyle) {
     applyMarkChange(
         toAdd = emptyList(),
-        toRemove = spanStyle.toMarkTypesToRemove(schema),
+        toRemove = spanStyle.toSimpleMarkTypesToRemove(schema),
         range = textFieldValue.selection,
+        textStyleAttrNamesToRemove = spanStyle.textStyleAttrNamesToRemove(),
     )
 }
 
@@ -215,8 +209,9 @@ public fun ProseMirrorState.removeSpanStyle(spanStyle: SpanStyle, textRange: Tex
     if (textRange.collapsed) return
     applyMarkChange(
         toAdd = emptyList(),
-        toRemove = spanStyle.toMarkTypesToRemove(schema),
+        toRemove = spanStyle.toSimpleMarkTypesToRemove(schema),
         range = textRange,
+        textStyleAttrNamesToRemove = spanStyle.textStyleAttrNamesToRemove(),
     )
 }
 
@@ -372,7 +367,7 @@ public fun ProseMirrorState.updateLink(url: String) {
     val (from, to) = linkRangeAtCaret() ?: return
     val tr = editorState.tr
     closeHistory(tr)
-    tr.removeMark(from, to, schema.mark("link").type)
+    tr.removeMarkTypes(from, to, listOf(schema.mark("link").type))
     tr.addMark(from, to, schema.mark("link", mapOf<String, Any?>("href" to url)))
     tr.setSelection(TextSelection.create(tr.doc, from, to))
     dispatch(tr)
@@ -396,7 +391,7 @@ public fun ProseMirrorState.removeLink() {
     val (from, to) = linkRangeAtCaret() ?: return
     val tr = editorState.tr
     closeHistory(tr)
-    tr.removeMark(from, to, schema.mark("link").type)
+    tr.removeMarkTypes(from, to, listOf(schema.mark("link").type))
     tr.setSelection(TextSelection.create(tr.doc, from, to))
     dispatch(tr)
 }
@@ -627,10 +622,48 @@ private fun ProseMirrorState.linkRangeAtCaret(): Pair<Int, Int>? {
 private fun ProseMirrorState.spanMarkTypes(): List<MarkType> =
     listOf("strong", "em", "underline", "strike", "textStyle").map { schema.mark(it).type }
 
+/** [spanStyle] 是否包含当前 schema 能表达的变化。 */
+private fun SpanStyle.hasRepresentableSpanChange(schema: com.atlassian.prosemirror.model.Schema): Boolean =
+    toSimpleMarksToAdd(schema).isNotEmpty() ||
+        toSimpleMarkTypesToRemoveForAdd(schema).isNotEmpty() ||
+        textStyleAttrsToAdd().isNotEmpty()
+
+/**
+ * 参考版 `isSpecifiedFieldsEquals` 的等价判定：
+ * [spanStyle] 中所有显式指定的可表示字段都命中当前选区时返回 true。
+ */
+private fun ProseMirrorState.isSpanStyleActive(spanStyle: SpanStyle): Boolean {
+    val current = currentSpanStyle
+    if (spanStyle.fontWeight != null && current.fontWeight != spanStyle.fontWeight) return false
+    if (spanStyle.fontStyle != null && current.fontStyle != spanStyle.fontStyle) return false
+
+    val decoration = spanStyle.textDecoration
+    if (decoration != null) {
+        val currentDecoration = current.textDecoration
+        if (decoration.contains(TextDecoration.Underline) &&
+            currentDecoration?.contains(TextDecoration.Underline) != true
+        ) return false
+        if (decoration.contains(TextDecoration.LineThrough) &&
+            currentDecoration?.contains(TextDecoration.LineThrough) != true
+        ) return false
+        if (!decoration.contains(TextDecoration.Underline) &&
+            !decoration.contains(TextDecoration.LineThrough) &&
+            currentDecoration != null
+        ) return false
+    }
+
+    if (spanStyle.color.isSpecified && current.color != spanStyle.color) return false
+    if (spanStyle.fontSize != androidx.compose.ui.unit.TextUnit.Unspecified &&
+        current.fontSize != spanStyle.fontSize
+    ) return false
+    return true
+}
+
 /**
  * 应用 mark 变更。折叠选区 → storedMarks（暂存给后续输入）；
  * 非折叠 → 选区 addMark/removeMark + 重建选区。
  * [alsoStage] 时非折叠也把 mark 追加到 storedMarks（参考版 staged 语义）。
+ * textStyle 的 color/fontSize 按字段合并，避免同类互斥导致属性丢失。
  */
 @OptIn(ExperimentalProseMirrorApi::class)
 private fun ProseMirrorState.applyMarkChange(
@@ -638,19 +671,33 @@ private fun ProseMirrorState.applyMarkChange(
     toRemove: List<MarkType>,
     range: TextRange,
     alsoStage: Boolean = false,
+    textStyleAttrsToAdd: Map<String, Any?> = emptyMap(),
+    textStyleAttrNamesToRemove: Set<String> = emptySet(),
 ) {
+    if (
+        toAdd.isEmpty() &&
+        toRemove.isEmpty() &&
+        textStyleAttrsToAdd.isEmpty() &&
+        textStyleAttrNamesToRemove.isEmpty()
+    ) return
+
     val tr = editorState.tr
     closeHistory(tr)
     if (range.collapsed) {
         toAdd.forEach { tr.addStoredMark(it) }
         toRemove.forEach { tr.removeStoredMark(it) }
+        updateStoredTextStyle(tr, textStyleAttrsToAdd, textStyleAttrNamesToRemove)
     } else {
         val (from, to) = pmRangeOf(range)
         toAdd.forEach { tr.addMark(from, to, it) }
-        toRemove.forEach { tr.removeMark(from, to, it) }
+        tr.removeMarkTypes(from, to, toRemove)
+        updateTextStyleInRange(tr, from, to, textStyleAttrsToAdd, textStyleAttrNamesToRemove)
         tr.setSelection(TextSelection.create(tr.doc, from, to))
         // setSelection 会清空 storedMarks，因此 staged marks 必须在选区落定后再追加。
-        if (alsoStage) toAdd.forEach { tr.addStoredMark(it) }
+        if (alsoStage) {
+            toAdd.forEach { tr.addStoredMark(it) }
+            updateStoredTextStyle(tr, textStyleAttrsToAdd, textStyleAttrNamesToRemove)
+        }
     }
     dispatch(tr)
 }
@@ -664,10 +711,85 @@ private fun ProseMirrorState.clearMarks(types: List<MarkType>, range: TextRange?
         types.forEach { tr.removeStoredMark(it) }
     } else {
         val (from, to) = pmRangeOf(target)
-        types.forEach { tr.removeMark(from, to, it) }
+        tr.removeMarkTypes(from, to, types)
         tr.setSelection(TextSelection.create(tr.doc, from, to))
     }
     dispatch(tr)
+}
+
+/**
+ * 按具体 Mark 移除 [types]。
+ *
+ * prosemirror-kotlin 1.1.20 的 `removeMark(from, to, MarkType)` 在遍历到非 inline
+ * 节点时返回 false，会被 `nodesBetween` 当成“不进入子节点”，导致任何块内的 mark
+ * 都删不掉。这里先用 `nodesBetween` 收集范围内该类型的每个具体 mark，
+ * 再走 `removeMark(from, to, Mark)` 精确移除。
+ */
+private fun Transaction.removeMarkTypes(from: Int, to: Int, types: List<MarkType>) {
+    if (from >= to || types.isEmpty()) return
+    val marks = mutableListOf<Mark>()
+    doc.nodesBetween(from, to, f = { node, _, _, _ ->
+        if (node.isText) {
+            node.marks.forEach { mark ->
+                val matched = types.any { it.name == mark.type.name || it == mark.type }
+                if (matched && marks.none { it == mark }) marks += mark
+            }
+        }
+        true
+    })
+    marks.forEach { removeMark(from, to, it) }
+}
+
+/** 折叠选区的 storedMarks 上按字段合并/移除 textStyle attrs。 */
+private fun ProseMirrorState.updateStoredTextStyle(
+    tr: Transaction,
+    attrsToAdd: Map<String, Any?>,
+    attrNamesToRemove: Set<String>,
+) {
+    if (attrsToAdd.isEmpty() && attrNamesToRemove.isEmpty()) return
+    val existing = tr.storedMarks?.firstOrNull { it.type.name == "textStyle" }
+    val attrs = existing?.attrs?.toMutableMap() ?: mutableMapOf()
+    attrNamesToRemove.forEach { attrs.remove(it) }
+    attrs.putAll(attrsToAdd)
+    if (existing != null) tr.removeStoredMark(existing.type)
+    if (attrs.isNotEmpty()) {
+        tr.addStoredMark(schema.mark("textStyle", attrs))
+    }
+}
+
+/**
+ * 非折叠选区的 textStyle 字段级更新。逐文本节点计算合并后的 attrs，
+ * 用 AddMarkStep/RemoveMarkStep 只改每个节点的 textStyle mark，
+ * 保留同一节点上未涉及的 textStyle 字段。
+ */
+private fun ProseMirrorState.updateTextStyleInRange(
+    tr: Transaction,
+    from: Int,
+    to: Int,
+    attrsToAdd: Map<String, Any?>,
+    attrNamesToRemove: Set<String>,
+) {
+    if (from >= to || (attrsToAdd.isEmpty() && attrNamesToRemove.isEmpty())) return
+    tr.doc.nodesBetween(from, to, f = { node, pos, _, _ ->
+        if (node.isText) {
+            val segmentFrom = maxOf(pos, from)
+            val segmentTo = minOf(pos + node.nodeSize, to)
+            if (segmentFrom < segmentTo) {
+                val existing = node.marks.firstOrNull { it.type.name == "textStyle" }
+                val mergedAttrs = existing?.attrs?.toMutableMap() ?: mutableMapOf()
+                attrNamesToRemove.forEach { mergedAttrs.remove(it) }
+                mergedAttrs.putAll(attrsToAdd)
+                when {
+                    mergedAttrs.isEmpty() && existing != null ->
+                        tr.step(RemoveMarkStep(segmentFrom, segmentTo, existing))
+
+                    mergedAttrs.isNotEmpty() && existing?.attrs != mergedAttrs ->
+                        tr.step(AddMarkStep(segmentFrom, segmentTo, schema.mark("textStyle", mergedAttrs)))
+                }
+            }
+        }
+        true
+    })
 }
 
 /** 选区扩展到的块级范围（textblock 起止）。 */
@@ -675,7 +797,17 @@ internal fun ProseMirrorState.expandedBlockRange(): Pair<Int, Int>? {
     val (from, to) = pmRangeOf(textFieldValue.selection)
     val resolvedFrom = doc.resolveSafe(from) ?: return null
     val resolvedTo = doc.resolveSafe(to) ?: return null
-    return resolvedFrom.start(resolvedFrom.depth) to resolvedTo.end(resolvedTo.depth)
+
+    fun com.atlassian.prosemirror.model.ResolvedPos.nearestTextblockDepth(): Int {
+        for (depth in depth downTo 0) {
+            if (node(depth).type.isTextblock) return depth
+        }
+        return 0
+    }
+
+    val fromDepth = resolvedFrom.nearestTextblockDepth()
+    val toDepth = resolvedTo.nearestTextblockDepth()
+    return resolvedFrom.start(fromDepth) to resolvedTo.end(toDepth)
 }
 
 /** 为选区覆盖的每个 textblock 设置 textAlign 属性（null 移除）。 */

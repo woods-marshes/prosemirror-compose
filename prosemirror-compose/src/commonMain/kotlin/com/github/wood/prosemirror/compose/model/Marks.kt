@@ -27,44 +27,63 @@ internal fun parseColorAttr(value: Any?): Color =
     }?.getOrNull() ?: Color.Unspecified
 
 /**
- * 将可表示的 [SpanStyle] 字段映射为 PM marks。
- *
- * 可映射：bold→strong、italic→em、underline→underline、lineThrough→strike、
- * color→textStyle、fontSize→textStyle。
+ * 将可表示的 [SpanStyle] 正向字段映射为简单 PM marks（strong/em/underline/strike）。
+ * textStyle（color/fontSize）单独由 [textStyleAttrsToAdd] 处理，
+ * 因为 textStyle mark 同类互斥，必须与已有 attrs 合并后再写入。
  *
  * 静默丢弃（无法在默认 schema 中表达）：fontFamily（含 Monospace——code 只能通过
  * [addCodeSpan] 设置）、background、shadow、letterSpacing、baselineShift 等。
  */
-internal fun SpanStyle.toMarksToAdd(schema: Schema): List<Mark> {
+internal fun SpanStyle.toSimpleMarksToAdd(schema: Schema): List<Mark> {
     val marks = mutableListOf<Mark>()
     if (fontWeight == FontWeight.Bold) marks += schema.mark("strong")
     if (fontStyle == FontStyle.Italic) marks += schema.mark("em")
     if (textDecoration?.contains(TextDecoration.Underline) == true) marks += schema.mark("underline")
     if (textDecoration?.contains(TextDecoration.LineThrough) == true) marks += schema.mark("strike")
-
-    // textStyle 默认排除自身（同类 mark 只能存在一个），color 与 fontSize
-    // 必须合并到同一个 mark 上，否则后添加的属性会挤掉先添加的属性。
-    val textStyleAttrs = buildMap {
-        if (color.isSpecified) put("color", color.toHexString())
-        if (fontSize != TextUnit.Unspecified) put("fontSize", fontSize.value)
-    }
-    if (textStyleAttrs.isNotEmpty()) {
-        marks += schema.mark("textStyle", textStyleAttrs)
-    }
     return marks
 }
 
-/** [toMarksToAdd] 的逆映射——需要移除的 mark 类型。 */
-internal fun SpanStyle.toMarkTypesToRemove(schema: Schema): List<MarkType> {
+/**
+ * [toSimpleMarksToAdd] 的逆映射——[removeSpanStyle] 需要移除的简单 mark 类型。
+ * 仅当 [SpanStyle] 显式指定了对应正向值时移除（与参考版 isSpecifiedFieldsEquals
+ * 一致：值为 Normal/null 的字段不属于“命中”字段）。
+ */
+internal fun SpanStyle.toSimpleMarkTypesToRemove(schema: Schema): List<MarkType> {
     val types = mutableListOf<MarkType>()
     if (fontWeight == FontWeight.Bold) types += schema.mark("strong").type
     if (fontStyle == FontStyle.Italic) types += schema.mark("em").type
     if (textDecoration?.contains(TextDecoration.Underline) == true) types += schema.mark("underline").type
     if (textDecoration?.contains(TextDecoration.LineThrough) == true) types += schema.mark("strike").type
-    if (color.isSpecified || fontSize != TextUnit.Unspecified) {
-        types += schema.mark("textStyle").type
+    return types
+}
+
+/**
+ * 显式指定的负向字段需要移除的简单 mark 类型。
+ * 例如 `SpanStyle(fontWeight = Normal)` 等价于清除 bold。
+ */
+internal fun SpanStyle.toSimpleMarkTypesToRemoveForAdd(schema: Schema): List<MarkType> {
+    val types = mutableListOf<MarkType>()
+    if (fontWeight != null && fontWeight != FontWeight.Bold) types += schema.mark("strong").type
+    if (fontStyle != null && fontStyle != FontStyle.Italic) types += schema.mark("em").type
+    if (textDecoration != null && textDecoration?.contains(TextDecoration.Underline) != true) {
+        types += schema.mark("underline").type
+    }
+    if (textDecoration != null && textDecoration?.contains(TextDecoration.LineThrough) != true) {
+        types += schema.mark("strike").type
     }
     return types
+}
+
+/** textStyle mark 上需要新增/覆盖的 attrs。 */
+internal fun SpanStyle.textStyleAttrsToAdd(): Map<String, Any?> = buildMap {
+    if (color.isSpecified) put("color", color.toHexString())
+    if (fontSize != TextUnit.Unspecified) put("fontSize", fontSize.value)
+}
+
+/** textStyle mark 上需要移除的 attr 名（仅移除指定字段，保留同 mark 上的其它字段）。 */
+internal fun SpanStyle.textStyleAttrNamesToRemove(): Set<String> = buildSet {
+    if (color.isSpecified) add("color")
+    if (fontSize != TextUnit.Unspecified) add("fontSize")
 }
 
 /** marks → 合并的 [SpanStyle]（复用 [MarkMapper]，含 textStyle 分支）。 */
@@ -73,6 +92,83 @@ internal fun List<Mark>.toSpanStyle(config: ProseMirrorConfig? = null): SpanStyl
         val style = MarkMapper.map(mark, config)
         if (style == SpanStyle()) acc else acc.merge(style)
     }
+
+/**
+ * 多段文本的共有 [SpanStyle]。与参考版 `getCommonStyle` 一致：
+ * 逐字段比较，某字段不一致时置为 unspecified，而不是要求整段 SpanStyle 完全相等。
+ * 这样 color 不同的选区仍能识别出共有的 fontSize（反之亦然）。
+ */
+internal fun List<SpanStyle>.commonSpanStyle(): SpanStyle {
+    val first = firstOrNull() ?: return SpanStyle()
+    var color = first.color
+    var fontSize = first.fontSize
+    var fontWeight = first.fontWeight
+    var fontStyle = first.fontStyle
+    var textDecoration = first.textDecoration
+
+    for (index in 1 until size) {
+        val other = this[index]
+        if (other.color != color) color = Color.Unspecified
+        if (other.fontSize != fontSize) fontSize = TextUnit.Unspecified
+        if (other.fontWeight != fontWeight) fontWeight = null
+        if (other.fontStyle != fontStyle) fontStyle = null
+        if (other.textDecoration != textDecoration) {
+            val firstDecoration = textDecoration
+            textDecoration = if (firstDecoration != null && other.textDecoration != null) {
+                val commonUnderline = firstDecoration.contains(
+                    androidx.compose.ui.text.style.TextDecoration.Underline,
+                ) && other.textDecoration!!.contains(
+                    androidx.compose.ui.text.style.TextDecoration.Underline,
+                )
+                val commonLineThrough = firstDecoration.contains(
+                    androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                ) && other.textDecoration!!.contains(
+                    androidx.compose.ui.text.style.TextDecoration.LineThrough,
+                )
+                when {
+                    commonUnderline && commonLineThrough ->
+                        androidx.compose.ui.text.style.TextDecoration.Underline +
+                            androidx.compose.ui.text.style.TextDecoration.LineThrough
+
+                    commonUnderline -> androidx.compose.ui.text.style.TextDecoration.Underline
+                    commonLineThrough -> androidx.compose.ui.text.style.TextDecoration.LineThrough
+                    else -> androidx.compose.ui.text.style.TextDecoration.None
+                }.takeIf { it != androidx.compose.ui.text.style.TextDecoration.None }
+            } else {
+                null
+            }
+        }
+    }
+
+    return SpanStyle(
+        color = color,
+        fontSize = fontSize,
+        fontWeight = fontWeight,
+        fontStyle = fontStyle,
+        textDecoration = textDecoration,
+    )
+}
+
+/** 指定 PM 范围内的字段级共有 [SpanStyle]。 */
+internal fun ProseMirrorState.spanStyleOverRange(from: Int, to: Int): SpanStyle {
+    val styles = mutableListOf<SpanStyle>()
+    doc.nodesBetween(from, to, f = { node, _, _, _ ->
+        if (node.isText) {
+            styles += node.marks.toSpanStyle(config)
+        }
+        true
+    })
+    return styles.commonSpanStyle()
+}
+
+/** 非折叠选区的字段级共有 [SpanStyle]（折叠选区回退到光标 marks）。 */
+internal fun ProseMirrorState.selectionSpanStyle(): SpanStyle {
+    if (textFieldValue.selection.collapsed) {
+        return caretMarkSet().toSpanStyle(config)
+    }
+    val (from, to) = pmRangeOf(textFieldValue.selection)
+    return spanStyleOverRange(from, to)
+}
 
 /** 扁平选区 → PM [from, to]。端点经坐标映射自动吸附原子/边界。 */
 internal fun ProseMirrorState.pmRangeOf(range: TextRange): Pair<Int, Int> {
