@@ -13,6 +13,7 @@ The ProseMirror document model is the single source of truth — Compose renders
 - **Lists** — bullet and ordered lists with wrap / lift / split, Enter/Tab handling, indent gutters, ordered numbers derived at render time
 - **Undo / redo** via the ProseMirror history plugin
 - **HTML clipboard** — copy and paste rich HTML through the ProseMirror `Slice` pipeline
+- **Markdown import / export** — `setMarkdown`, `insertMarkdown`, `toMarkdown` (JetBrains markdown/GFM parser → HTML → ProseMirror DOM parser)
 - **Trigger system** — `@mention`-style triggers with token nodes inserted into the document
 - **Inline images** as atomic nodes, loaded via a pluggable `ImageLoader`
 - **Material 3 components** — `ProseMirrorEditor` (filled), `OutlinedProseMirrorEditor`, read-only `ProseMirrorText`, expandable variants
@@ -24,8 +25,28 @@ The ProseMirror document model is the single source of truth — Compose renders
 | --- | --- |
 | Android (minSdk 24) | ✅ |
 | Desktop (JVM) | ✅ |
-| iOS (static framework `Shared`) | ✅ |
-| Web (JS/Wasm) | 🚧 scaffolding only — targets are commented out in `shared/build.gradle.kts`; the web apps currently run a placeholder UI |
+| iOS (static framework `ComposeApp`) | ✅ |
+| Web (JS/Wasm) | 🚧 scaffolding only — targets are commented out in the core module; the web apps currently run a placeholder UI |
+
+## Modules
+
+Following the recommended Kotlin Multiplatform structure:
+
+| Module | Role |
+| --- | --- |
+| `prosemirror-compose` | Editor core library |
+| `prosemirror-compose-coil3` | Optional Coil3 `ImageLoader` integration |
+| `composeApp` | Shared Compose UI and demo `App()` consumed by the platform entry points |
+| `androidApp` / `desktopApp` / `webApp` / `iosApp` | Platform entry points |
+
+```text
+androidApp ─┐
+desktopApp ─┼──▶ composeApp ──▶ prosemirror-compose
+iosApp ─────┘
+webApp ──────┘   (once web targets are enabled)
+
+prosemirror-compose-coil3 ──▶ prosemirror-compose
+```
 
 ## Architecture in brief
 
@@ -39,7 +60,7 @@ See `CLAUDE.md` for the full detail on the edit pipeline and its invariants.
 
 ## Sample apps
 
-`androidApp`, `desktopApp`, `iosApp` and `webApp` all run the same demo `App()` composable: a formatting toolbar (bold/italic/underline/strike/code/link/heading/undo/redo/lists/indent), an `@mention` trigger demo, a read-only preview, and the exported HTML.
+`androidApp`, `desktopApp`, `iosApp` and `webApp` all run the same demo `App()` composable from `composeApp`, ported from the upstream `compose-rich-editor` sample: Home, rich editor, HTML editor, Markdown editor, Slack, Mentions, Undo/Redo, Lists config, real examples, Links, Images, GitHub, Notion, Headings, Claude, and Expandable text.
 
 ## Building & testing
 
@@ -63,9 +84,9 @@ Requirements: JDK 17+, Android SDK (Android targets only).
 Tests:
 
 ```bash
-./gradlew :shared:jvmTest               # primary suite (Desktop/JVM)
-./gradlew :shared:testAndroidHostTest   # Android host
-./gradlew :shared:iosSimulatorArm64Test # iOS simulator (macOS only)
+./gradlew :prosemirror-compose:jvmTest               # primary suite (Desktop/JVM)
+./gradlew :prosemirror-compose:testAndroidHostTest   # Android host
+./gradlew :prosemirror-compose:iosSimulatorArm64Test # iOS simulator (macOS only)
 ```
 
 > Note: `settings.gradle.kts` routes Maven dependencies through Aliyun mirrors (Maven Central is unreliable from mainland China). `com.atlassian.prosemirror` is excluded from the mirrors and fetched directly from Maven Central.
@@ -78,4 +99,4 @@ The library is not yet published to a Maven repository. To use it, include the `
 
 Apache License 2.0 — see [LICENSE](LICENSE).
 
-This project is adapted from [`compose-rich-editor`](https://github.com/MohamedRejeb/compose-rich-editor) (Apache-2.0, © Mohamed Rejeb) and builds on the Kotlin port of ProseMirror, [`prosemirror-kotlin`](https://github.com/atlassian-labs/prosemirror-kotlin) / `com.atlassian.prosemirror:*` (v1.1.17, Apache-2.0, © Atlassian Pty Ltd). The editor is re-packaged under `com.github.wood.prosemirror.compose`.
+This project is adapted from [`compose-rich-editor`](https://github.com/MohamedRejeb/compose-rich-editor) (Apache-2.0, © Mohamed Rejeb) and builds on the Kotlin port of ProseMirror, [`prosemirror-kotlin`](https://github.com/atlassian-labs/prosemirror-kotlin) / `com.atlassian.prosemirror:*` (v1.1.20, Apache-2.0, © Atlassian Pty Ltd). The editor is re-packaged under `com.github.wood.prosemirror.compose`.

@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-`prosemirror-compose` is a Kotlin Multiplatform rich-text editor library (with sample apps) built on the Atlassian Kotlin port of ProseMirror (`com.atlassian.prosemirror:*`, v1.1.17 — model, state, transform, history, collab, test-builder). The editor source lives in the `shared` module and is adapted from [compose-rich-editor](https://github.com/MohamedRejeb/compose-rich-editor), re-packaged under `com.github.wood.prosemirror.compose`.
+`prosemirror-compose` is a Kotlin Multiplatform rich-text editor library (with sample apps) built on the Atlassian Kotlin port of ProseMirror (`com.atlassian.prosemirror:*`, v1.1.20 — model, state, transform, history, collab, test-builder). The editor source lives in the `prosemirror-compose` module and is adapted from [compose-rich-editor](https://github.com/MohamedRejeb/compose-rich-editor), re-packaged under `com.github.wood.prosemirror.compose`.
+
+Modules: `prosemirror-compose` (core library), `prosemirror-compose-coil3` (Coil3 image loader), `composeApp` (shared demo UI), and `androidApp`/`desktopApp`/`webApp`/`iosApp` platform entry points.
 
 Platforms: Android, Desktop (JVM), iOS (via Xcode app consuming the `Shared` static framework), and Web (JS/Wasm — scaffolding only; see caveats below).
 
@@ -17,11 +19,11 @@ All commands run from the repo root with the Gradle wrapper. Note: `settings.gra
 - Run web: `./gradlew :webApp:wasmJsBrowserDevelopmentRun` or `./gradlew :webApp:jsBrowserDevelopmentRun`
 - iOS: open `iosApp/` in Xcode (consumes the `Shared` framework from `shared`; iOS targets cannot build on Windows hosts)
 - Tests:
-  - Desktop: `./gradlew :shared:jvmTest` (primary; 15+ tests in `ProseMirrorStateTest`)
-  - Android host: `./gradlew :shared:testAndroidHostTest`
-  - iOS simulator: `./gradlew :shared:iosSimulatorArm64Test` (macOS only)
-- Single test: `./gradlew :shared:jvmTest --tests "com.example.ClassName.methodName"`
-- Compile checks: `./gradlew :shared:compileKotlinJvm :shared:compileAndroidMain` (iOS compile check unavailable on Windows)
+  - Desktop: `./gradlew :prosemirror-compose:jvmTest` (primary; 15+ tests in `ProseMirrorStateTest`)
+  - Android host: `./gradlew :prosemirror-compose:testAndroidHostTest`
+  - iOS simulator: `./gradlew :prosemirror-compose:iosSimulatorArm64Test` (macOS only)
+- Single test: `./gradlew :prosemirror-compose:jvmTest --tests "com.example.ClassName.methodName"`
+- Compile checks: `./gradlew :prosemirror-compose:compileKotlinJvm :prosemirror-compose:compileAndroidMain` (iOS compile check unavailable on Windows)
 
 ## Architecture
 
@@ -41,13 +43,13 @@ The editor's source of truth is an immutable ProseMirror document tree — `Pros
 4. `dispatch(transaction)` applies it to `editorState` (runs ProseMirror plugins/steps) and calls `updateAnnotatedString()`.
 5. `updateAnnotatedString()` rebuilds the flat `AnnotatedString` (via `appendProseMirrorDoc` in `utils/AnnotatedStringExt.kt`), rebuilds the coordinate map, prunes unused `inlineContentMap` keys, and syncs `textFieldValue`.
 
-Inverse path (selection/caret moves, composition): flat → PM mapping, same cycle. IME composition is tracked via the `"composition"` transaction meta.
+Inverse path (selection/caret moves, composition): flat → PM mapping, same cycle. IME composition is tracked via the `"composition"` transaction meta; #779 suggestion-word boundary refresh, physical-key navigation exclusion, and the trailing-space materialization use the same timing windows as the reference.
 
 ### Key invariants (learned the hard way — do not break)
 
 - **`ProseMirrorState` init moves the caret to the first textblock content start** (PM's default selection sits at the doc level; typing there inserts a new block instead of into the paragraph). Also: `appendProseMirrorDoc` deliberately does NOT register a `boundary(0,0)` for the doc start — that would make `flatToPm(0)` resolve to the doc-level position 0 instead of the textblock start 1.
-- **Synthesized flat characters**: block `"\n"` separators are added only before non-first-child-of-parent blocks that aren't `list_item` (list items are separated by their markers). `PositionCoordinateMap.blockSeparators` records them so deleting a separator merges blocks (`pmBefore..pmAfter`).
-- **Coordinate lookups are linear scans, not binary search** — list markers create overlapping flat ranges (zero-width pm range for the marker vs. text ranges), which break binary search. `flatToPm`/`pmToFlat` iterate in registration order and take the first containing range.
+- **Synthesized flat characters**: block `"\n"` separators are added before every non-first-child-of-parent block, including list items and blocks after empty paragraphs. `PositionCoordinateMap.blockSeparators` records their flat positions for selection snapping; deleting a separator maps through the surrounding boundaries into the PM join range and is handled by `deleteRange`.
+- **Coordinate lookups are linear scans, not binary search** — list markers and token labels create overlapping flat ranges. Zero-width-PM/constant ranges map their interior to a single PM position but are half-open on the flat side, so the position right after a marker/token falls through to the next boundary instead of drifting by an off-by-one.
 - **Every programmatic operation calls `closeHistory(tr)`** — otherwise the PM history plugin merges the formatting step into the preceding typing group and undo rewinds the text too.
 - **Collapsed-selection formatting = stored marks** (`tr.addStoredMark`/`removeStoredMark`): PM keeps stored marks only for collapsed `TextSelection`s, which exactly matches the reference's "staged style" semantics. `addStep` clears them — re-apply after `split` in `handleEnter` when `preserveStyleOnEmptyLine`.
 - **`setHtml`/`setText`/`clear` rebuild the whole `PMEditorState`** (`replaceWholeDoc` in `TextOps.kt`) to clear undo history — PM has no public history-reset API.
@@ -67,20 +69,20 @@ Inverse path (selection/caret moves, composition): flat → PM mapping, same cyc
 
 ### App entry points
 
-- `androidApp`/`desktopApp`/`webApp`/`iosApp` all call a shared `App()` composable defined in `shared/src/commonMain/.../App.kt` — a Material3 demo with a formatting toolbar (bold/italic/underline/strike/code/link/heading dropdown/undo/redo/list toggles/indent), an `@mention` trigger demo (`TriggerSuggestions` + `insertToken`), a read-only preview, and the exported HTML.
+- `androidApp`/`desktopApp`/`webApp`/`iosApp` all call a shared `App()` composable defined in `composeApp/src/commonMain/.../app/App.kt`, ported from the upstream sample: Home, rich editor, HTML editor, Markdown editor, Slack, Mentions, Undo/Redo, Lists config, real examples, Links, Images, GitHub, Notion, Headings, Claude, and Expandable text.
 - `webApp/main.kt` wraps `App()` in `WithFontResourcesLoaded` (compose resources fonts).
 
 ## Conventions & caveats
 
 - Source code comments are written in **Chinese** — match that style when adding comments.
 - The library API uses `@ExperimentalProseMirrorApi` / `@InternalProseMirrorApi` annotations (`annotation/`) for stability markers; public composables often require the experimental opt-in.
-- Web caveats: `shared/build.gradle.kts` has its `js`/`wasmJs` targets **commented out**, and `webApp` does **not** depend on `:shared` (also commented out) — web apps currently only run the placeholder UI. Re-enable both to use the editor on web.
+- Web caveats: `prosemirror-compose` has its `js`/`wasmJs` targets **commented out**, and `webApp` does **not** depend on the core module (also commented out) — web apps currently only run the placeholder UI. Re-enable both to use the editor on web.
 - `prosemirror-test-builder` is available for building test documents (`builders(schema)` + string syntax).
 - Kotlin 2.4.10, Compose Multiplatform 1.11.1, AGP 9.1.1, minSdk 24, compileSdk 37, Android JVM target 11. `shared` iOS framework is static, baseName `Shared`.
 - `ProseMirrorConfig.listIndent` etc. are `Int` (sp convention), matching the reference — not `Dp`.
 
 ## Implemented feature surface (as of 2026-07)
 
-Schema (`schema/`): doc/paragraph/heading(level)/bullet_list/ordered_list(order)/list_item/image/token/hard_break/text + marks strong/em/underline/strike/code/link(href, inclusive=false)/textStyle(color,fontSize). Formatting API (`model/Formatting.kt`): span-style toggles with collapsed-selection staging, link/code/heading/paragraph-style ops. Lists (`model/Lists.kt` + `schema/ListCommands.kt`): wrap/lift/split commands ported from prosemirror-schema-list on the transform primitives, Enter/Tab key handling, marker rendering with indent gutters in the flattener, ordered numbers derived at render time. Text ops (`model/TextOps.kt`): replace/remove/insert/setText/copy/clear, HTML insert + paste via `replaceRange(Slice)`. Tokens: `insertToken` creates real `token` atom nodes rendered as styled text. Undo/redo via the PM history plugin (Ctrl/Cmd+Z wired in `onPreviewKeyEvent`).
+Schema (`schema/`): doc/paragraph/heading(level)/bullet_list/ordered_list(order)/list_item/image/token/hard_break/text + marks strong/em/underline/strike/code/link(href, inclusive=false)/textStyle(color,fontSize). Formatting API (`model/Formatting.kt`): span-style toggles with collapsed-selection staging, link/code/heading/paragraph-style ops. Lists (`model/Lists.kt` + `schema/ListCommands.kt`): wrap/lift/sink/split commands ported from prosemirror-schema-list on the transform primitives, Enter/Tab key handling, marker rendering with indent gutters in the flattener, ordered numbers derived at render time; list markers are atomic prefixes (partial deletion/replacement demotes the item, collapsed full-marker removal is absorbed as an IME echo). Text ops (`model/TextOps.kt`): replace/remove/insert/setText/copy/clear, HTML insert + paste via `replaceRange(Slice)`, multiline plain-text input/paste split into paragraphs via an open paragraph slice. Markdown (`parser/markdown/` + `model/MarkdownOps.kt`): JetBrains markdown/GFM AST → HTML → PM DOMParser for import; PM fragment → Markdown serializer for export (including `toMarkdown(range)`). Tokens: `insertToken` creates real `token` atom nodes rendered as styled text. Undo/redo via the PM history plugin (Ctrl/Cmd+Z wired in `onPreviewKeyEvent`).
 
-Known divergences from the reference: `toText()` uses `doc.textBetween` (no list markers, no trailing separators); `updateLink` updates all links in the selection; no join-before optimization when wrapping next to an existing list; generic `SpanStyle` fields beyond color/fontSize are dropped (see `MarkMapper`).
+Known divergences from the reference: `toText()` mirrors the flattened text (including list markers and separators, as the reference does); generic `SpanStyle` fields beyond color/fontSize are dropped (see `MarkMapper`). Markdown HTML blocks and exotic GFM constructs are limited to what `HtmlGenerator` + the PM schema parse rules accept.

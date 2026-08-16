@@ -1,0 +1,181 @@
+package com.github.wood.prosemirror.compose.app.navigation
+
+import com.github.wood.prosemirror.compose.model.*
+
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import com.github.wood.prosemirror.compose.app.claude.ClaudeDemoScreen
+import com.github.wood.prosemirror.compose.app.examples.RealExamplesScreen
+import com.github.wood.prosemirror.compose.app.expandable.ExpandableTextSampleScreen
+import com.github.wood.prosemirror.compose.app.github.GitHubDemoScreen
+import com.github.wood.prosemirror.compose.app.headings.HeadingsSampleScreen
+import com.github.wood.prosemirror.compose.app.home.HomeScreen
+import com.github.wood.prosemirror.compose.app.htmleditor.HtmlEditorContent
+import com.github.wood.prosemirror.compose.app.images.ImagesSampleScreen
+import com.github.wood.prosemirror.compose.app.links.LinksSampleScreen
+import com.github.wood.prosemirror.compose.app.listsconfig.ListsConfigSampleScreen
+import com.github.wood.prosemirror.compose.app.markdowneditor.MarkdownEditorContent
+import com.github.wood.prosemirror.compose.app.mentions.MentionsSampleScreen
+import com.github.wood.prosemirror.compose.app.notion.NotionDemoScreen
+import com.github.wood.prosemirror.compose.app.richeditor.RichEditorScreen
+import com.github.wood.prosemirror.compose.app.slack.SlackDemoScreen
+import com.github.wood.prosemirror.compose.app.undoredo.UndoRedoSampleScreen
+
+private const val HOME_ROUTE = "home"
+private const val RICH_EDITOR_ROUTE = "richEditor"
+private const val HTML_EDITOR_ROUTE = "htmlEditor"
+private const val MARKDOWN_EDITOR_ROUTE = "markdownEditor"
+private const val SLACK_ROUTE = "slack"
+private const val MENTIONS_ROUTE = "mentions"
+private const val UNDO_REDO_ROUTE = "undoRedo"
+private const val LISTS_CONFIG_ROUTE = "listsConfig"
+private const val REAL_EXAMPLES_ROUTE = "realExamples"
+private const val LINKS_ROUTE = "links"
+private const val IMAGES_ROUTE = "images"
+private const val GITHUB_ROUTE = "github"
+private const val NOTION_ROUTE = "notion"
+private const val HEADINGS_ROUTE = "headings"
+private const val CLAUDE_ROUTE = "claude"
+private const val EXPANDABLE_ROUTE = "expandable"
+
+@Composable
+fun NavGraph() {
+    val navController = rememberNavController()
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusManager = LocalFocusManager.current
+
+    NavHost(
+        navController = navController,
+        startDestination = HOME_ROUTE,
+        modifier = Modifier
+            .fillMaxSize()
+            .pointerInput(keyboardController) {
+                detectTapGestures {
+                    keyboardController?.hide()
+                    focusManager.clearFocus()
+                }
+            }
+    ) {
+        composable(HOME_ROUTE) {
+            HomeScreen(
+                navigateToRichEditor = { navController.navigate(RICH_EDITOR_ROUTE) },
+                navigateToHtmlEditor = { navController.navigate(HTML_EDITOR_ROUTE) },
+                navigateToMarkdownEditor = { navController.navigate(MARKDOWN_EDITOR_ROUTE) },
+                navigateToSlack = { navController.navigate(SLACK_ROUTE) },
+                navigateToMentions = { navController.navigate(MENTIONS_ROUTE) },
+                navigateToUndoRedo = { navController.navigate(UNDO_REDO_ROUTE) },
+                navigateToListsConfig = { navController.navigate(LISTS_CONFIG_ROUTE) },
+                navigateToRealExamples = { navController.navigate(REAL_EXAMPLES_ROUTE) },
+                navigateToLinks = { navController.navigate(LINKS_ROUTE) },
+                navigateToImages = { navController.navigate(IMAGES_ROUTE) },
+                navigateToGithub = { navController.navigate(GITHUB_ROUTE) },
+                navigateToNotion = { navController.navigate(NOTION_ROUTE) },
+                navigateToHeadings = { navController.navigate(HEADINGS_ROUTE) },
+                navigateToClaude = { navController.navigate(CLAUDE_ROUTE) },
+                navigateToExpandable = { navController.navigate(EXPANDABLE_ROUTE) },
+            )
+        }
+
+        composable(RICH_EDITOR_ROUTE) {
+            RichEditorScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(HTML_EDITOR_ROUTE) {
+            HtmlEditorContent(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(MARKDOWN_EDITOR_ROUTE) {
+            MarkdownEditorContent(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(SLACK_ROUTE) {
+            SlackDemoScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(MENTIONS_ROUTE) {
+            MentionsSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(UNDO_REDO_ROUTE) {
+            UndoRedoSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(LISTS_CONFIG_ROUTE) {
+            ListsConfigSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(REAL_EXAMPLES_ROUTE) {
+            RealExamplesScreen(
+                navigateBack = { navController.popBackStack() },
+                navigateToSlack = { navController.navigate(SLACK_ROUTE) },
+                navigateToGithub = { navController.navigate(GITHUB_ROUTE) },
+                navigateToNotion = { navController.navigate(NOTION_ROUTE) },
+                navigateToClaude = { navController.navigate(CLAUDE_ROUTE) },
+            )
+        }
+
+        composable(CLAUDE_ROUTE) {
+            ClaudeDemoScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(GITHUB_ROUTE) {
+            GitHubDemoScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(NOTION_ROUTE) {
+            NotionDemoScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(LINKS_ROUTE) {
+            LinksSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(IMAGES_ROUTE) {
+            ImagesSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(HEADINGS_ROUTE) {
+            HeadingsSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable(EXPANDABLE_ROUTE) {
+            ExpandableTextSampleScreen(
+                navigateBack = { navController.popBackStack() }
+            )
+        }
+    }
+}
