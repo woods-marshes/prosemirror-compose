@@ -8,6 +8,11 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+extra["POM_DESCRIPTION"] =
+    "Compose Multiplatform rich text editor with a ProseMirror document model."
+
+apply(from = rootProject.file("gradle/maven-publish.gradle.kts"))
+
 kotlin {
     listOf(
         iosArm64(),

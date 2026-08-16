@@ -1,0 +1,76 @@
+name: Publish
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: macos-latest
+    timeout-minutes: 90
+    if: github.repository == 'woods-marshes/prosemirror-compose'
+
+    env:
+      OSSRH_USERNAME: ${{ secrets.OSSRH_USERNAME }}
+      OSSRH_PASSWORD: ${{ secrets.OSSRH_PASSWORD }}
+      SIGNING_KEY_ID: ${{ secrets.SIGNING_KEY_ID }}
+      SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
+      SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION_NAME="${GITHUB_REF_NAME#v}"
+            echo "version=${VERSION_NAME}" >> "$GITHUB_OUTPUT"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.1.0-SNAPSHOT" >> "$GITHUB_OUTPUT"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify release secrets
+        if: steps.version.outputs.release == 'true'
+        run: |
+          : "${OSSRH_USERNAME:?OSSRH_USERNAME secret is required for releases}"
+          : "${OSSRH_PASSWORD:?OSSRH_PASSWORD secret is required for releases}"
+          : "${SIGNING_KEY_ID:?SIGNING_KEY_ID secret is required for releases}"
+          : "${SIGNING_KEY:?SIGNING_KEY secret is required for releases}"
+          : "${SIGNING_PASSWORD:?SIGNING_PASSWORD secret is required for releases}"
+
+      - name: Publish snapshot
+        if: steps.version.outputs.release == 'false'
+        run: >-
+          ./gradlew
+          publishToSonatype
+          -PVERSION_NAME=${{ steps.version.outputs.version }}
+          --no-configuration-cache
+          --stacktrace
+
+      - name: Publish and release
+        if: steps.version.outputs.release == 'true'
+        run: >-
+          ./gradlew
+          publishToSonatype
+          closeAndReleaseSonatypeStagingRepository
+          -PVERSION_NAME=${{ steps.version.outputs.version }}
+          --no-configuration-cache
+          --stacktrace

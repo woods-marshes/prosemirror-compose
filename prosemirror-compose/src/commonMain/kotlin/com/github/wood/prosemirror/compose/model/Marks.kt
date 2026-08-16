@@ -18,7 +18,8 @@ import com.atlassian.prosemirror.model.util.resolveSafe
 import com.github.wood.prosemirror.compose.utils.MarkMapper
 
 /** Color → 规范化的 `#RRGGBB` 十六进制字符串（textStyle mark 的存储格式）。 */
-internal fun Color.toHexString(): String = "#%06X".format(toArgb() and 0xFFFFFF)
+internal fun Color.toHexString(): String =
+    "#" + (toArgb() and 0xFFFFFF).toString(16).uppercase().padStart(6, '0')
 
 /** textStyle mark 的 color 属性 → [Color]。 */
 internal fun parseColorAttr(value: Any?): Color =

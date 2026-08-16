@@ -1,5 +1,7 @@
 # ProseMirror Compose
 
+[![CI](https://github.com/woods-marshes/prosemirror-compose/actions/workflows/ci.yml/badge.svg)](https://github.com/woods-marshes/prosemirror-compose/actions/workflows/ci.yml)
+
 A Kotlin Multiplatform rich-text editor library for [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform), built on [ProseMirror](https://prosemirror.net) through its Kotlin port (`com.atlassian.prosemirror`).
 
 The ProseMirror document model is the single source of truth — Compose renders a flattened projection of the immutable tree, and every edit flows back through a diff → transaction pipeline.
@@ -89,11 +91,41 @@ Tests:
 ./gradlew :prosemirror-compose:iosSimulatorArm64Test # iOS simulator (macOS only)
 ```
 
-> Note: `settings.gradle.kts` routes Maven dependencies through Aliyun mirrors (Maven Central is unreliable from mainland China). `com.atlassian.prosemirror` is excluded from the mirrors and fetched directly from Maven Central.
-
 ## Usage
 
-The library is not yet published to a Maven repository. To use it, include the `shared` module in your Gradle build (as the sample apps do) and consume the `com.github.wood.prosemirror.compose` package. Maven publication is planned.
+The library modules are published to Maven Central under the `io.github.woods-marshes` group:
+
+```kotlin
+// In a Kotlin Multiplatform commonMain source set
+dependencies {
+    implementation("io.github.woods-marshes:prosemirror-compose:0.1.0")
+    implementation("io.github.woods-marshes:prosemirror-compose-coil3:0.1.0") // optional Coil3 images
+}
+```
+
+Gradle module metadata is published for the `kotlinMultiplatform` artifact, so Android / JVM / iOS variants are resolved automatically from the same coordinates.
+
+## Publishing
+
+Publishing is driven by GitHub Actions:
+
+- Push to `main` → publishes `0.1.0-SNAPSHOT` to the Sonatype snapshots repository.
+- Push a `v*` tag (for example `v0.1.0`) → publishes `0.1.0` to the Sonatype staging repository, then closes and releases it to Maven Central.
+
+Required GitHub Actions secrets:
+
+| Secret | Purpose |
+| --- | --- |
+| `OSSRH_USERNAME` / `OSSRH_PASSWORD` | Sonatype OSSRH account (you must first claim the `io.github.woods-marshes` namespace) |
+| `SIGNING_KEY_ID` | Last 8 characters of the GPG public key ID |
+| `SIGNING_KEY` | ASCII-armored GPG private key |
+| `SIGNING_PASSWORD` | GPG private key passphrase |
+
+Local publishing for smoke-testing:
+
+```bash
+./gradlew :prosemirror-compose:publishToMavenLocal :prosemirror-compose-coil3:publishToMavenLocal
+```
 
 ## License
 

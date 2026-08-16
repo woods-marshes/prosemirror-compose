@@ -7,6 +7,11 @@ plugins {
     alias(libs.plugins.composeCompiler)
 }
 
+extra["POM_DESCRIPTION"] =
+    "Coil3 image loader integration for prosemirror-compose."
+
+apply(from = rootProject.file("gradle/maven-publish.gradle.kts"))
+
 kotlin {
     listOf(
         iosArm64(),
