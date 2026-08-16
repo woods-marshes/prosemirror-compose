@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-`prosemirror-compose` is a Kotlin Multiplatform rich-text editor library (with sample apps) built on the Atlassian Kotlin port of ProseMirror (`com.atlassian.prosemirror:*`, v1.1.17 — model, state, transform, history, collab, test-builder). The editor source lives in the `shared` module and is a vendored/adapted version of the Atlassian `prosemirror-compose` (compose-rich-editor) library, re-packaged under `com.github.wood.prosemirror.compose`.
+`prosemirror-compose` is a Kotlin Multiplatform rich-text editor library (with sample apps) built on the Atlassian Kotlin port of ProseMirror (`com.atlassian.prosemirror:*`, v1.1.17 — model, state, transform, history, collab, test-builder). The editor source lives in the `shared` module and is adapted from [compose-rich-editor](https://github.com/MohamedRejeb/compose-rich-editor), re-packaged under `com.github.wood.prosemirror.compose`.
 
 Platforms: Android, Desktop (JVM), iOS (via Xcode app consuming the `Shared` static framework), and Web (JS/Wasm — scaffolding only; see caveats below).
 

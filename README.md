@@ -78,4 +78,4 @@ The library is not yet published to a Maven repository. To use it, include the `
 
 Apache License 2.0 — see [LICENSE](LICENSE).
 
-This project is a vendored/adapted version of Atlassian's [`prosemirror-kotlin`](https://github.com/atlassian/prosemirror-kotlin) and `compose-rich-editor` (part of Atlassian's `richeditor-compose`), re-packaged under `com.github.wood.prosemirror.compose`, and builds on `com.atlassian.prosemirror:*` (v1.1.17). Upstream code remains © Atlassian Pty Ltd and is licensed under the Apache License 2.0.
+This project is adapted from [`compose-rich-editor`](https://github.com/MohamedRejeb/compose-rich-editor) (Apache-2.0, © Mohamed Rejeb) and builds on the Kotlin port of ProseMirror, [`prosemirror-kotlin`](https://github.com/atlassian/prosemirror-kotlin) / `com.atlassian.prosemirror:*` (v1.1.17, Apache-2.0, © Atlassian Pty Ltd). The editor is re-packaged under `com.github.wood.prosemirror.compose`.
