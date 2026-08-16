@@ -74,8 +74,6 @@ Inverse path (selection/caret moves, composition): flat → PM mapping, same cyc
 
 - Source code comments are written in **Chinese** — match that style when adding comments.
 - The library API uses `@ExperimentalProseMirrorApi` / `@InternalProseMirrorApi` annotations (`annotation/`) for stability markers; public composables often require the experimental opt-in.
-- `repomix-output.xml` at the repo root is a stale packed snapshot of the codebase (for LLM context). Treat it as read-only reference; it may not reflect current source. Gitignored — local working copy only, not part of the published repo.
-- `reference/` contains compressed XML dumps of the upstream `prosemirror-kotlin` and `richeditor-compose` sources (read-only reference, also gitignored — local only). The richeditor-compose `RichTextState` is a flat-model implementation — port its API surface and UX, not its internals.
 - Web caveats: `shared/build.gradle.kts` has its `js`/`wasmJs` targets **commented out**, and `webApp` does **not** depend on `:shared` (also commented out) — web apps currently only run the placeholder UI. Re-enable both to use the editor on web.
 - `prosemirror-test-builder` is available for building test documents (`builders(schema)` + string syntax).
 - Kotlin 2.4.10, Compose Multiplatform 1.11.1, AGP 9.1.1, minSdk 24, compileSdk 37, Android JVM target 11. `shared` iOS framework is static, baseName `Shared`.
