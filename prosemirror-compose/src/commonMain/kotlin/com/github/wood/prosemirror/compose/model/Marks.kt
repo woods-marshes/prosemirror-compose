@@ -28,11 +28,11 @@ internal fun parseColorAttr(value: Any?): Color =
 
 /**
  * 将可表示的 [SpanStyle] 正向字段映射为简单 PM marks（strong/em/underline/strike）。
- * textStyle（color/fontSize）单独由 [textStyleAttrsToAdd] 处理，
+ * textStyle（color/fontSize/background）单独由 [textStyleAttrsToAdd] 处理，
  * 因为 textStyle mark 同类互斥，必须与已有 attrs 合并后再写入。
  *
  * 静默丢弃（无法在默认 schema 中表达）：fontFamily（含 Monospace——code 只能通过
- * [addCodeSpan] 设置）、background、shadow、letterSpacing、baselineShift 等。
+ * [addCodeSpan] 设置）、shadow、letterSpacing、baselineShift 等。
  */
 internal fun SpanStyle.toSimpleMarksToAdd(schema: Schema): List<Mark> {
     val marks = mutableListOf<Mark>()
@@ -77,12 +77,14 @@ internal fun SpanStyle.toSimpleMarkTypesToRemoveForAdd(schema: Schema): List<Mar
 /** textStyle mark 上需要新增/覆盖的 attrs。 */
 internal fun SpanStyle.textStyleAttrsToAdd(): Map<String, Any?> = buildMap {
     if (color.isSpecified) put("color", color.toHexString())
+    if (background.isSpecified) put("background", background.toHexString())
     if (fontSize != TextUnit.Unspecified) put("fontSize", fontSize.value)
 }
 
 /** textStyle mark 上需要移除的 attr 名（仅移除指定字段，保留同 mark 上的其它字段）。 */
 internal fun SpanStyle.textStyleAttrNamesToRemove(): Set<String> = buildSet {
     if (color.isSpecified) add("color")
+    if (background.isSpecified) add("background")
     if (fontSize != TextUnit.Unspecified) add("fontSize")
 }
 
@@ -101,6 +103,7 @@ internal fun List<Mark>.toSpanStyle(config: ProseMirrorConfig? = null): SpanStyl
 internal fun List<SpanStyle>.commonSpanStyle(): SpanStyle {
     val first = firstOrNull() ?: return SpanStyle()
     var color = first.color
+    var background = first.background
     var fontSize = first.fontSize
     var fontWeight = first.fontWeight
     var fontStyle = first.fontStyle
@@ -109,6 +112,7 @@ internal fun List<SpanStyle>.commonSpanStyle(): SpanStyle {
     for (index in 1 until size) {
         val other = this[index]
         if (other.color != color) color = Color.Unspecified
+        if (other.background != background) background = Color.Unspecified
         if (other.fontSize != fontSize) fontSize = TextUnit.Unspecified
         if (other.fontWeight != fontWeight) fontWeight = null
         if (other.fontStyle != fontStyle) fontStyle = null
@@ -142,6 +146,7 @@ internal fun List<SpanStyle>.commonSpanStyle(): SpanStyle {
 
     return SpanStyle(
         color = color,
+        background = background,
         fontSize = fontSize,
         fontWeight = fontWeight,
         fontStyle = fontStyle,

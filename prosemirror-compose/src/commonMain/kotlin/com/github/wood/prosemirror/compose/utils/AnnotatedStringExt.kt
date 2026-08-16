@@ -53,9 +53,20 @@ internal fun AnnotatedString.Builder.appendProseMirrorDoc(
 
             mapBuilder.registerRange(pmCursor, pmCursor + node.nodeSize, flatStart, flatEnd)
 
-            // code mark → styledRanges 供 Canvas 重绘圆角胶囊
+            // code mark → styledRanges 供 Canvas 重绘圆角胶囊。
+            // 同一段落内相邻的 code 文本节点合并为一条 range：初始 HTML 里
+            // “<b>xxx</b> is a <i>xxx</i>” 会产生多个 text 节点，但它们都属于
+            // 用户选中的同一句话，应该画成一个连续的 code 胶囊（参考版 RichSpan
+            // 渲染也按文本段画框，这里通过合并 range 得到同样连续的框）。
             if (node.marks.any { it.type.name == "code" }) {
-                styledRanges.add(RichSpanStyle.Code() to TextRange(flatStart, flatEnd))
+                val codeRange = TextRange(flatStart, flatEnd)
+                val lastIndex = styledRanges.lastIndex
+                val last = styledRanges.getOrNull(lastIndex)
+                if (last != null && last.first is RichSpanStyle.Code && last.second.max == flatStart) {
+                    styledRanges[lastIndex] = last.first to TextRange(last.second.min, flatEnd)
+                } else {
+                    styledRanges.add(RichSpanStyle.Code() to codeRange)
+                }
             }
 
             val mergedStyle = node.marks

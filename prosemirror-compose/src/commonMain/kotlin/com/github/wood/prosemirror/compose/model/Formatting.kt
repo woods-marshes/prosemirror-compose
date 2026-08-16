@@ -653,6 +653,7 @@ private fun ProseMirrorState.isSpanStyleActive(spanStyle: SpanStyle): Boolean {
     }
 
     if (spanStyle.color.isSpecified && current.color != spanStyle.color) return false
+    if (spanStyle.background.isSpecified && current.background != spanStyle.background) return false
     if (spanStyle.fontSize != androidx.compose.ui.unit.TextUnit.Unspecified &&
         current.fontSize != spanStyle.fontSize
     ) return false

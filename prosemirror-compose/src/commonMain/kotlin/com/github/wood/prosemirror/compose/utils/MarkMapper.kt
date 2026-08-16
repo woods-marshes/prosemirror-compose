@@ -2,7 +2,6 @@ package com.github.wood.prosemirror.compose.utils
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
@@ -23,8 +22,9 @@ public object MarkMapper {
             "em", "italic" -> SpanStyle(fontStyle = FontStyle.Italic)
             "underline" -> SpanStyle(textDecoration = TextDecoration.Underline)
             "strike", "strikethrough" -> SpanStyle(textDecoration = TextDecoration.LineThrough)
+            // 与参考版 RichSpanStyle.Code.spanStyle 一致：只改颜色。
+            // 是否使用等宽字体由调用方的 textStyle 决定（样例编辑器传入 Monospace）。
             "code" -> SpanStyle(
-                fontFamily = FontFamily.Monospace,
                 color = codeColor
             )
             "link" -> SpanStyle(
@@ -33,6 +33,7 @@ public object MarkMapper {
             )
             "textStyle" -> SpanStyle(
                 color = parseColorAttr(mark.attrs["color"]),
+                background = parseColorAttr(mark.attrs["background"]),
                 fontSize = (mark.attrs["fontSize"] as? Number)?.let { it.toFloat().sp } ?: TextUnit.Unspecified
             )
             else -> SpanStyle()

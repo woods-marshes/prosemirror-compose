@@ -307,6 +307,21 @@ class ProseMirrorStateTest {
     }
 
     @Test
+    fun backgroundToggleAppliesAndRenders() {
+        val state = ProseMirrorState()
+        state.type("abc")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 3)))
+        state.toggleSpanStyle(SpanStyle(background = androidx.compose.ui.graphics.Color.Yellow))
+        val textStyle = state.doc.child(0).child(0).marks.firstOrNull { it.type.name == "textStyle" }
+        assertNotNull(textStyle)
+        assertTrue(textStyle.attrs["background"] != null)
+        assertEquals(androidx.compose.ui.graphics.Color.Yellow, state.currentSpanStyle.background)
+
+        state.toggleSpanStyle(SpanStyle(background = androidx.compose.ui.graphics.Color.Yellow))
+        assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "textStyle" })
+    }
+
+    @Test
     fun cjkCompositionLikeEditsRoundTrip() {
         val state = ProseMirrorState()
         // IME 典型序列：输入拼音字符 → 替换为候选词（仍在 composition 中）→ 提交。
@@ -328,6 +343,40 @@ class ProseMirrorStateTest {
         assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "code" })
         state.toggleCodeSpan()
         assertTrue(state.doc.child(0).child(0).marks.none { it.type.name == "code" })
+    }
+
+    @Test
+    fun codeOnMixedMarksMergesIntoOneRangePerParagraph() {
+        val state = ProseMirrorState()
+        state.setHtml(
+            "<p><b>ProseMirrorEditor</b> is a <i>composable</i> that allows you to edit " +
+                "<u>rich text</u> content.</p>",
+        )
+        val length = state.textFieldValue.text.length
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, length)))
+        state.toggleCodeSpan()
+        val codeRanges = state.styledRichSpanList.filter {
+            it.first is com.github.wood.prosemirror.compose.model.RichSpanStyle.Code
+        }
+        assertEquals(listOf(TextRange(0, length)), codeRanges.map { it.second })
+        assertEquals(
+            "ProseMirrorEditor is a composable that allows you to edit rich text content.",
+            state.toText(),
+        )
+    }
+
+    @Test
+    fun codeOnCjkTextKeepsTextAndSingleRange() {
+        val state = ProseMirrorState()
+        state.type("这是一段中文内容。")
+        state.onTextFieldValueChange(state.textFieldValue.copy(selection = TextRange(0, 9)))
+        state.toggleCodeSpan()
+        assertEquals("这是一段中文内容。", state.toText())
+        val codeRanges = state.styledRichSpanList.filter {
+            it.first is com.github.wood.prosemirror.compose.model.RichSpanStyle.Code
+        }
+        assertEquals(listOf(TextRange(0, 9)), codeRanges.map { it.second })
+        assertTrue(state.doc.child(0).child(0).marks.any { it.type.name == "code" })
     }
 
     @Test
