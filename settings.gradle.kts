@@ -9,16 +9,6 @@ pluginManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
-        // 阿里云镜像（大陆网络访问 Maven Central 不稳定，大文件下载易中断）
-        // com.atlassian.prosemirror 未同步到镜像，排除后走 mavenCentral()
-        maven {
-            url = uri("https://maven.aliyun.com/repository/central")
-            content {
-                excludeGroup("com.atlassian.prosemirror")
-            }
-        }
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
-        maven { url = uri("https://maven.aliyun.com/repository/gradle-plugin") }
         mavenCentral()
         gradlePluginPortal()
     }
@@ -33,15 +23,6 @@ dependencyResolutionManagement {
                 includeGroupAndSubgroups("com.google")
             }
         }
-        // 阿里云镜像（大陆网络访问 Maven Central 不稳定，大文件下载易中断）
-        // com.atlassian.prosemirror 未同步到镜像，排除后走 mavenCentral()
-        maven {
-            url = uri("https://maven.aliyun.com/repository/central")
-            content {
-                excludeGroup("com.atlassian.prosemirror")
-            }
-        }
-        maven { url = uri("https://maven.aliyun.com/repository/google") }
         mavenCentral()
     }
 }
